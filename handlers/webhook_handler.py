@@ -67,7 +67,9 @@ def process_incoming_message(webhook_data: dict):
             print("👋 Detected farewell - sending goodbye message")
             handle_farewell(sender_phone)
         else:
-            print(f"ℹ️ Message doesn't match known patterns. Ignoring.")
+            send_whatsapp_message(sender_phone, "Sorry, I didn't understand that. Please reply with 'not today', a greeting, or a farewell.")
+            print(f"❓ Sent feedback for unsupported query from {sender_phone}")
+            
             
     except (KeyError, IndexError, TypeError) as e:
         # If webhook structure is unexpected, log error but don't crash
@@ -164,6 +166,25 @@ def is_farewell(message_text: str) -> bool:
             return True
     return False
 
+def is_full_list(message_text: str) -> bool:
+    """
+    Checks if the message is a request for the full list of recipes
+    
+    Args:
+        message_text: Lowercased and stripped message text
+        
+    Returns:
+        bool: True if message is a request for the full list of recipes
+    """
+
+    full_list = ["full list", "all recipes", "all please" ]
+
+    for item in full_list:
+        if item in message_text:
+            return True
+        else: 
+            return False
+
 def handle_greeting(phone_number: str):
     """
     Handles greeting messages with a friendly response and instructions
@@ -212,10 +233,27 @@ def handle_farewell(phone_number: str):
     
     import random
     response = random.choice(farewell_responses)
+
     
     try:
         send_whatsapp_message(phone_number, response)
         print(f"✅ Farewell sent to {phone_number}")
     except Exception as e:
         print(f"❌ Error sending farewell: {e}")
+        traceback.print_exc()
+
+def handle_full_list(phone_number: str):
+    """
+    Handles requests for the full list of recipes
+    
+    Args:
+        phone_number: User's phone number
+    """
+    all_recipes = get_all_recipe_names()
+
+    try:        
+        send_all_recipes_message(phone_number, all_recipes)
+        print(f"✅ Full list sent to {phone_number}")
+    except Exception as e:
+        print(f"❌ Error sending full list: {e}")
         traceback.print_exc()

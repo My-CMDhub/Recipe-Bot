@@ -14,21 +14,41 @@ def seed_initial_recipes():
     """
     # List of recipe names - you can customize this!
     recipe_names = [
-        "Pasta Carbonara",
-        "Chicken Tikka Masala",
-        "Vegetable Stir Fry",
-        "Beef Tacos",
-        "Margherita Pizza",
-        "Fish Curry",
-        "Caesar Salad",
-        "Chicken Fried Rice",
-        "Vegetable Soup",
-        "Grilled Salmon",
-        "Beef Burger",
-        "Chicken Noodles",
-        "Tomato Pasta",
-        "Vegetable Lasagna",
-        "Chicken Biryani"
+        "daal,rice, roti, curry",
+        "pasta",
+        "Palak/masala, Panner/Bhuraji curry and roti",
+        'Khichdi',
+        'Pulao + roti + Kadhi',
+        'Dosa',
+        'Idli',
+        'Hnadhavo',
+        'Math curry + roti',
+        'Pizza',
+        'Mung Pulao',
+        'Sandwich',
+        'Dalvada',
+        'Pav bhaji',
+        'Pani puri',
+        'Samosa',
+        'Fajita (Mexican)',
+        'Tacos (Mexican)',
+        'Dhokla',
+        'Uttapam',
+        'Gota',
+        'Dahi vada',
+        'Sev Tamato curry + roti',
+        'Kaju curry + roti',
+        'Chhole Channa curry + roti',
+        'Take away',
+        'aalu paratha',
+        'Ringan Bharathu + roti',
+        'Khaman chatani',
+        'dal bati',
+        'dal dhokari',
+        'Dudhina Muthiya'
+        
+
+        
     ]
     
     supabase = get_supabase_client()
