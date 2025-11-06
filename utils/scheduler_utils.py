@@ -17,20 +17,39 @@ load_dotenv()
 # Australian timezone (handles both AEST and AEDT automatically)
 AUSTRALIA_TZ = pytz.timezone('Australia/Sydney')
 
+def get_recipient_phone_numbers():
+    """
+    Gets list of recipient phone numbers from environment variable
+    Supports comma-separated phone numbers
+    
+    Returns:
+        list: List of phone numbers (without + sign, trimmed)
+    """
+    recipient_phones_env = os.getenv('RECIPIENT_PHONE_NUMBER', '')
+    
+    if not recipient_phones_env:
+        return []
+    
+    # Split by comma and clean up each phone number
+    phone_numbers = [phone.strip() for phone in recipient_phones_env.split(',') if phone.strip()]
+    
+    return phone_numbers
+
 def send_daily_recipe():
     """
-    Sends daily recipe suggestion to the configured phone number
+    Sends daily recipe suggestion to all configured phone numbers
     This function is called by the scheduler
     """
     try:
-        # Get recipient phone number from environment
-        recipient_phone = os.getenv('RECIPIENT_PHONE_NUMBER')
+        # Get list of recipient phone numbers
+        recipient_phones = get_recipient_phone_numbers()
         
-        if not recipient_phone:
+        if not recipient_phones:
             print("⚠️ WARNING: RECIPIENT_PHONE_NUMBER not set in .env")
             return
         
         print(f"\n🍽️ [{datetime.now(AUSTRALIA_TZ).strftime('%Y-%m-%d %H:%M:%S')}] Sending daily recipe...")
+        print(f"📱 Recipients: {len(recipient_phones)} phone number(s)")
         
         # Get a random recipe not sent today
         recipe = get_random_recipe_not_sent_today()
@@ -40,23 +59,39 @@ def send_daily_recipe():
             recipe_name = recipe['name']
             
             print(f"✅ Found recipe: {recipe_name} (ID: {recipe_id})")
-            print(f"📤 Sending to {recipient_phone}...")
             
-            # Send the recipe
-            result = send_recipe_message(recipient_phone, recipe_name)
-            print(f"✅ Recipe sent successfully!")
+            # Send to all recipients
+            success_count = 0
+            for phone_number in recipient_phones:
+                try:
+                    print(f"📤 Sending to {phone_number}...")
+                    result = send_recipe_message(phone_number, recipe_name)
+                    success_count += 1
+                    print(f"✅ Sent to {phone_number}")
+                except Exception as e:
+                    print(f"❌ Failed to send to {phone_number}: {e}")
             
-            # Record that we sent this recipe
-            record_recipe_sent(recipe_id)
-            print(f"💾 Recipe recorded in history")
+            print(f"✅ Recipe sent to {success_count}/{len(recipient_phones)} recipients")
+            
+            # Record that we sent this recipe (only once, not per recipient)
+            if success_count > 0:
+                record_recipe_sent(recipe_id)
+                print(f"💾 Recipe recorded in history")
         else:
-            # All recipes sent today - send full list
+            # All recipes sent today - send full list to all recipients
             print("⚠️ All recipes have been sent today")
             all_recipes = get_all_recipe_names()
             
             from handlers.whatsapp_hanlder import send_all_recipes_message
-            send_all_recipes_message(recipient_phone, all_recipes)
-            print(f"✅ Full recipe list sent")
+            success_count = 0
+            for phone_number in recipient_phones:
+                try:
+                    send_all_recipes_message(phone_number, all_recipes)
+                    success_count += 1
+                except Exception as e:
+                    print(f"❌ Failed to send full list to {phone_number}: {e}")
+            
+            print(f"✅ Full recipe list sent to {success_count}/{len(recipient_phones)} recipients")
             
     except Exception as e:
         print(f"❌ Error sending daily recipe: {e}")

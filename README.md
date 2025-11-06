@@ -84,7 +84,7 @@ The app will run on `http://localhost:5001` (or port specified in PORT env var).
 - `WHATSAPP_TOKEN` - WhatsApp Cloud API access token
 - `WHATSAPP_PHONE_NUMBER_ID` - Your WhatsApp phone number ID
 - `WHATSAPP_VERIFY_TOKEN` - Webhook verification token
-- `RECIPIENT_PHONE_NUMBER` - Phone number to send recipes to (without +)
+- `RECIPIENT_PHONE_NUMBER` - Phone number(s) to send recipes to (without +). For multiple numbers, separate with commas: `number1, number2`
 - `SUPABASE_URL` - Your Supabase project URL
 - `SUPABASE_KEY` - Your Supabase anon key
 - `RECIPE_SEND_TIME` - Time to send recipes (HH:MM format, default: 22:00)

@@ -166,24 +166,32 @@ def is_farewell(message_text: str) -> bool:
 
 def handle_greeting(phone_number: str):
     """
-    Handles greeting messages with a friendly response
+    Handles greeting messages with a friendly response and instructions
     
     Args:
         phone_number: User's phone number
     """
-    greetings_responses = [
-        "Hey there! 👋 Ready for today's recipe suggestion?",
-        "Hello! 😊 I'm your recipe bot. Want a dinner idea?",
-        "Hi! 🍽️ I'm here to help with recipe suggestions!",
-        "Hey! 👋 What's cooking? Need a recipe idea?"
-    ]
-    
-    import random
-    response = random.choice(greetings_responses)
+    # Welcome message with instructions
+    response = """Hey there! 👋 
+
+I'm your *Daily Recipe Bot - Luca*! *made by @DHRUV PATEL*  I'll send you dinner recipe suggestions every day at 10 PM.
+
+*Here's what you can do:*
+
+🍽️ *Daily Recipe* - I'll send you a recipe automatically at 10 PM
+
+🔄 *"not today"* - Reply with "not today" to get an alternative recipe suggestion
+
+👋 *Greetings* - Say "hi", "hello", or "hey" anytime
+
+👋 *Farewell* - Say "bye", "goodbye", or "see you" 
+
+*Note:* You'll receive your first recipe suggestion today at 10 PM Australian time! 😊
+_not getting any recipes? contact @DHRUV PATEL to update the list of recipes_"""
     
     try:
         send_whatsapp_message(phone_number, response)
-        print(f"✅ Greeting sent to {phone_number}")
+        print(f"✅ Greeting with instructions sent to {phone_number}")
     except Exception as e:
         print(f"❌ Error sending greeting: {e}")
         traceback.print_exc()
