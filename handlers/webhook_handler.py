@@ -60,6 +60,9 @@ def process_incoming_message(webhook_data: dict):
         if 'not today' in message_text:
             print("✅ Detected 'not today' - sending alternative recipe")
             handle_not_today_response(sender_phone)
+        elif is_full_list(message_text):
+            print("📋 Detected 'full list' request - sending all recipes")
+            handle_full_list(sender_phone)
         elif is_greeting(message_text):
             print("👋 Detected greeting - sending friendly response")
             handle_greeting(sender_phone)
@@ -67,7 +70,7 @@ def process_incoming_message(webhook_data: dict):
             print("👋 Detected farewell - sending goodbye message")
             handle_farewell(sender_phone)
         else:
-            send_whatsapp_message(sender_phone, "Sorry, I didn't understand that. Please reply with 'not today', a greeting, or a farewell.")
+            send_whatsapp_message(sender_phone, "Sorry, I didn't understand that. Please reply with 'not today', 'full list', a greeting, or a farewell.")
             print(f"❓ Sent feedback for unsupported query from {sender_phone}")
             
             
@@ -176,14 +179,22 @@ def is_full_list(message_text: str) -> bool:
     Returns:
         bool: True if message is a request for the full list of recipes
     """
-
-    full_list = ["full list", "all recipes", "all please" ]
-
-    for item in full_list:
-        if item in message_text:
+    full_list_keywords = [
+        "full list", 
+        "all recipes", 
+        "all recipe",
+        "show all",
+        "list all",
+        "all please",
+        "show recipes",
+        "recipe list"
+    ]
+    
+    # Check if message contains any of the keywords
+    for keyword in full_list_keywords:
+        if keyword in message_text:
             return True
-        else: 
-            return False
+    return False
 
 def handle_greeting(phone_number: str):
     """
@@ -202,6 +213,8 @@ I'm your *Daily Recipe Bot - Luca*! *made by @DHRUV PATEL*  I'll send you dinner
 🍽️ *Daily Recipe* - I'll send you a recipe automatically at 10 PM
 
 🔄 *"not today"* - Reply with "not today" to get an alternative recipe suggestion
+
+📋 *"full list"* - Reply with "full list" to see all available recipes
 
 👋 *Greetings* - Say "hi", "hello", or "hey" anytime
 
