@@ -5,6 +5,7 @@ Handles message parsing and "not today" detection
 
 from utils.recipe_utils import get_random_recipe_not_sent_today, record_recipe_sent, get_all_recipe_names
 from handlers.whatsapp_hanlder import send_alternative_recipe, send_all_recipes_message, send_whatsapp_message
+from handlers.image_handler import handle_receipt_image
 import traceback
 def process_incoming_message(webhook_data: dict):
     """
@@ -49,8 +50,14 @@ def process_incoming_message(webhook_data: dict):
         
         # Only process text messages
         if message_type != 'text':
-            print(f"Non-text message received: {message_type}")
-            return
+
+            if message_type == 'image':
+                print(f"Image message received from {sender_phone}")
+                handle_receipt_image(sender_phone, message)
+                return
+            else:    
+                print(f"Non-text message received: {message_type}")
+                return
         
         # Get the actual message text
         message_text = message.get('text', {}).get('body', '').lower().strip()
