@@ -7,7 +7,16 @@ import requests
 import os
 from dotenv import load_dotenv
 from handlers.whatsapp_hanlder import send_whatsapp_message
-from utils.receipt_storage import create_receipt_record
+from utils.receipt_storage import (
+create_receipt_record, 
+update_receipt_extraction_status, 
+update_receipt_with_unstract, 
+save_receipt_items, 
+update_receipt_with_structured_data )
+
+from handlers.unstract_client import process_receipt_with_unstract
+from handlers.ai_data_processor import structure_receipt_data
+
 
 load_dotenv()
 
@@ -130,7 +139,6 @@ def handle_receipt_image(phone_number: str, message: dict):
             return
         
         # Store receipt record in database
-        # We'll create this function next
         receipt_id = create_receipt_record(
             user_phone=phone_number,
             image_url=f"whatsapp_media_id:{media_id}",  # Store media ID reference
@@ -141,10 +149,70 @@ def handle_receipt_image(phone_number: str, message: dict):
         
         if receipt_id:
             print(f"✅ Receipt stored with ID: {receipt_id}")
-            send_whatsapp_message(
-                phone_number,
-                "✅ Receipt processed successfully! I'll extract the details now. This may take a moment..."
-            )
+            
+            try:
+                print(f"🔍 Starting OCR processing with Unstract...")
+                unstract_result = process_receipt_with_unstract(image_bytes)
+
+                if unstract_result:
+                    update_receipt_with_unstract(
+                        receipt_id=receipt_id,
+                        unstract_response=unstract_result,
+                        extraction_status='success'
+                    )
+                    print(f"✅ OCR completed! Extracted {len(unstract_result.get('extracted_text', ''))} characters")
+                    send_whatsapp_message(
+                        phone_number,
+                        "✅ Receipt processed! Extracting items now..."
+                    )
+                    structured_data = structure_receipt_data(unstract_result.get('extracted_text', ''))
+                    if structured_data:
+                        update_receipt_with_structured_data(receipt_id, structured_data)
+
+                        items_list = structured_data.get('items', [])
+                        if items_list:
+                            saved_count = save_receipt_items(receipt_id, items_list, normalization_model='mistral')
+                            print(f"✅ Saved {saved_count} items to database")
+
+
+                            if saved_count > 0:
+                                send_whatsapp_message(
+                                    phone_number,
+                                    f"✅ Receipt processed successfully! Found {saved_count} items from {structured_data.get('store_name', 'the store')}."
+
+                                )
+                                return
+
+                        else:
+                            send_whatsapp_message(
+                                phone_number,
+                                "⚠️ Receipt processed but couldn't save items. Please try again." )
+                            return
+
+                    else:
+                        send_whatsapp_message(
+                                phone_number,
+                                "⚠️ Receipt processed but no items found. Please check the receipt."
+                            )
+                        return
+                        
+                else:
+                        update_receipt_extraction_status(receipt_id, 'failed', 'OCR processing failed')
+                        send_whatsapp_message(
+                            phone_number,
+                            "⚠️ Receipt received but there was an issue saving it. Please try again."
+                        )
+                        return
+                        
+            except Exception as e:
+                print(f"❌ Error during OCR processing: {e}")
+                import traceback
+                traceback.print_exc()
+                update_receipt_extraction_status(receipt_id, 'failed', 'Exception during OCR processing')
+                send_whatsapp_message(
+                    phone_number,
+                    "❌ Sorry, something went wrong processing your receipt. Please try again later."
+                )
         else:
             send_whatsapp_message(
                 phone_number,
@@ -158,4 +226,4 @@ def handle_receipt_image(phone_number: str, message: dict):
         send_whatsapp_message(
             phone_number,
             "❌ Sorry, something went wrong processing your receipt. Please try again later."
-        )
+        ) 

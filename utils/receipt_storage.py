@@ -93,3 +93,131 @@ def get_receipt_count(user_phone: str = None) -> int:
     except Exception as e:
         print(f"❌ Error getting receipt count: {e}")
         return 0
+
+def update_receipt_with_unstract(receipt_id: int, unstract_response: dict, extraction_status: str = 'success'):
+    """
+    Updates receipt record with Unstract OCR results
+    
+    Args:
+        receipt_id: Receipt ID to update
+        unstract_response: Full Unstract API response
+        extraction_status: 'success' or 'failed'
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        update_data = {
+            'unstract_response': unstract_response,
+            'extraction_status': extraction_status,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        supabase.table('receipts').update(update_data).eq('id', receipt_id).execute()
+        print(f"✅ Receipt {receipt_id} updated with Unstract data")
+        
+    except Exception as e:
+        print(f"❌ Error updating receipt: {e}")
+        import traceback
+        traceback.print_exc()
+
+def update_receipt_extraction_status(receipt_id: int, status: str, error_message: str = None):
+    """
+    Updates receipt extraction status
+    
+    Args:
+        receipt_id: Receipt ID
+        status: 'pending', 'processing', 'success', 'failed'
+        error_message: Error message if failed
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        update_data = {
+            'extraction_status': status,
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        if error_message:
+            update_data['error_message'] = error_message
+        
+        supabase.table('receipts').update(update_data).eq('id', receipt_id).execute()
+        
+    except Exception as e:
+        print(f"❌ Error updating status: {e}")
+
+def save_receipt_items(receipt_id: int, items_list: list, normalization_model: str = 'ai_normalized'):
+
+    """
+    Saves receipt items to the receipt_items table
+    
+    Args:
+        receipt_id: The receipt ID these items belong to
+        items_list: List of item dicts from AI structuring
+                   Format: [{"name": "...", "quantity": 2.0, "unit_price": 1.65, "total_price": 3.30}, ...]
+        normalization_model: Which AI model normalized these ('mistral', 'gemini', etc.)
+    
+    Returns:
+        int: Number of items saved, or 0 if failed
+    """
+
+    try:
+        supabase = get_supabase_client()
+
+        items_to_insert = []
+
+        for item in items_list:
+            item_data = {
+                'receipt_id': receipt_id,
+                'item_name_raw': item.get('name', ''),
+                'item_name_normalized': item.get('name', ''),
+                'quantity': item.get('quantity', 0),
+                'unit_price': item.get('unit_price', 0),
+                'total_price': item.get('total_price', 0),
+                'normalization_status': 'success',
+                'normalization_model': normalization_model
+            }
+            items_to_insert.append(item_data)
+
+        if items_to_insert:
+            result = supabase.table('receipt_items').insert(items_to_insert).execute()
+            saved_count = len(result.data) if result.data else 0
+            print(f"✅ Saved {saved_count} items for receipt {receipt_id}")
+            return saved_count
+        else:
+            print("⚠️ No items to save")
+            return 0
+
+    except Exception as e:
+        print(f"❌ Error saving receipt items: {e}")
+        import traceback
+        traceback.print_exc()
+        return 0
+
+def update_receipt_with_structured_data(receipt_id: int, structured_data: dict):
+    """
+    Updates receipt record with AI-structured data (store_name, purchase_date)
+    
+    Args:
+        receipt_id: Receipt ID to update
+        structured_data: Dict with 'store_name' and 'purchase_date'
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        update_data = {
+            'store_name': structured_data.get('store_name'),
+            'purchase_date': structured_data.get('purchase_date'),
+            'date_is_estimated': False,  # AI extracted it from receipt, so it's accurate
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        supabase.table('receipts').update(update_data).eq('id', receipt_id).execute()
+        print(f"✅ Receipt {receipt_id} updated with structured data")
+        
+    except Exception as e:
+        print(f"❌ Error updating receipt with structured data: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+            
