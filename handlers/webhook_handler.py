@@ -10,60 +10,125 @@ from utils.receipt_storage import get_receipt_count, save_prediction
 from utils.grocery_prediction_utils import get_recent_receipts, receipt_items_from_receipts, aggregate_purchase_patterns, format_data_for_llm
 from handlers.prediction_handler import generate_grocery_prediction
 from utils.session_manager import create_feedback_session
-from datetime import date
+from datetime import date, datetime, timedelta
 import os
 import traceback
-def process_incoming_message(webhook_data: dict):
+from typing import Optional
+
+# In-memory cache for processed message IDs (prevents duplicate processing)
+# Format: {message_id: timestamp}
+# Auto-cleanup: messages older than 24 hours are removed
+_processed_messages_cache = {}
+_cache_cleanup_interval = timedelta(hours=24)
+
+def _cleanup_old_messages():
+    """Remove message IDs older than 24 hours from cache"""
+    now = datetime.now()
+    expired_ids = [
+        msg_id for msg_id, timestamp in _processed_messages_cache.items()
+        if now - timestamp > _cache_cleanup_interval
+    ]
+    for msg_id in expired_ids:
+        del _processed_messages_cache[msg_id]
+    if expired_ids:
+        print(f"🧹 Cleaned up {len(expired_ids)} old message IDs from cache")
+
+def _is_message_processed(message_id: str) -> bool:
+    """Check if message has already been processed"""
+    if message_id in _processed_messages_cache:
+        return True
+    return False
+
+def _mark_message_processed(message_id: str):
+    """Mark a message as processed"""
+    _processed_messages_cache[message_id] = datetime.now()
+    # Periodic cleanup (every 100 messages)
+    if len(_processed_messages_cache) % 100 == 0:
+        _cleanup_old_messages()
+
+def process_incoming_message(webhook_data: dict) -> bool:
     """
     Processes incoming WhatsApp webhook data
     
     Args:
         webhook_data: The JSON payload sent by WhatsApp webhook
+        
+    Returns:
+        bool: True if message was processed, False if ignored (status update, duplicate, etc.)
     """
-    # WhatsApp sends data in a nested structure:
-    # webhook_data['entry'][0]['changes'][0]['value']['messages'][0]
+    # WhatsApp sends different types of webhook events:
+    # 1. Messages: value.messages[] - actual user messages (we process these)
+    # 2. Status updates: value.statuses[] - delivery/read receipts (we ignore these)
+    # 3. Account updates: value.contacts[] - account changes (we ignore these)
     
-    # Extract the message data from nested structure
     try:
         entry = webhook_data.get('entry', [])
         if not entry:
-            print("No entry found in webhook data")
-
-            return
+            print("⚠️ No entry found in webhook data - ignoring")
+            return False
         
         changes = entry[0].get('changes', [])
         if not changes:
-            print("No changes found in webhook data")
-
-            return
+            print("⚠️ No changes found in webhook data - ignoring")
+            return False
         
         value = changes[0].get('value', {})
-        messages = value.get('messages', [])
         
+        # CRITICAL: Filter out status updates (delivered, read, sent notifications)
+        # These are NOT messages and should be ignored immediately
+        statuses = value.get('statuses', [])
+        if statuses:
+            print(f"📊 Status update received (delivered/read/sent) - ignoring")
+            return False
+        
+        # Check for account/contact updates (also not messages)
+        contacts = value.get('contacts', [])
+        if contacts and not value.get('messages'):
+            print(f"👤 Contact/account update received - ignoring")
+            return False
+        
+        # Only process if we have actual messages
+        messages = value.get('messages', [])
         if not messages:
-            print("No messages found in webhook data")
-            return
+            print("⚠️ No messages found in webhook data (might be status update) - ignoring")
+            return False
         
         # Get the first message (usually there's only one)
         message = messages[0]
+        
+        # Extract message ID for idempotency check (CRITICAL for preventing duplicate processing)
+        message_id = message.get('id')
+        if not message_id:
+            print("⚠️ No message ID found - cannot verify idempotency, skipping")
+            return False
+        
+        # IDEMPOTENCY CHECK: Prevent processing the same message twice
+        # This handles WhatsApp retries and prevents duplicate responses
+        if _is_message_processed(message_id):
+            print(f"🔄 Duplicate message detected (ID: {message_id[:20]}...) - already processed, ignoring")
+            return False
+        
+        # Mark as processed BEFORE processing (prevents race conditions)
+        _mark_message_processed(message_id)
         
         # Extract phone number and message text
         sender_phone = message.get('from')  # Phone number of sender
         message_type = message.get('type')   # Usually 'text'
 
-        print(f"Received message from: {sender_phone}")
-        print(f"Message type: {message_type}")
+        print(f"📨 Processing new message from: {sender_phone}")
+        print(f"   Message ID: {message_id[:20]}...")
+        print(f"   Message type: {message_type}")
         
-        # Only process text messages
+        # Only process text and image messages
         if message_type != 'text':
-
             if message_type == 'image':
-                print(f"Image message received from {sender_phone}")
-                handle_receipt_image(sender_phone, message)
-                return
+                print(f"📷 Image message received from {sender_phone}")
+                # Pass message_id to image handler for additional duplicate prevention
+                handle_receipt_image(sender_phone, message, message_id)
+                return True
             else:    
-                print(f"Non-text message received: {message_type}")
-                return
+                print(f"⚠️ Unsupported message type: {message_type} - ignoring")
+                return False
         
         # Get the actual message text
         message_text = message.get('text', {}).get('body', '').lower().strip()
@@ -94,13 +159,21 @@ def process_incoming_message(webhook_data: dict):
         else:
             send_whatsapp_message(sender_phone, "Sorry, I didn't understand that. Please reply with 'not today', 'full list', a greeting, or a farewell.")
             print(f"❓ Sent feedback for unsupported query from {sender_phone}")
-            
+        
+        return True
             
     except (KeyError, IndexError, TypeError) as e:
         # If webhook structure is unexpected, log error but don't crash
-        print(f"Error processing webhook: {e}")
+        # Still return True so webhook returns 200 (prevents retries)
+        print(f"⚠️ Error processing webhook structure: {e}")
         traceback.print_exc()
-        return
+        return False
+    except Exception as e:
+        # Unexpected error - log but don't crash
+        # Return False so we know it failed, but webhook will still return 200
+        print(f"❌ Unexpected error processing webhook: {e}")
+        traceback.print_exc()
+        return False
 
 def handle_not_today_response(phone_number: str):
     """

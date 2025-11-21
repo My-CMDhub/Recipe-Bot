@@ -164,6 +164,9 @@ def handle_webhook():
     """
     Main webhook endpoint - receives incoming messages
     WhatsApp calls this whenever you receive a message
+    
+    IMPORTANT: Always returns 200 OK quickly to prevent WhatsApp retries.
+    Even if we ignore the event (status updates, duplicates), we return 200.
     """
     if DEBUG_MODE:
         print("\n📨 POST WEBHOOK REQUEST RECEIVED")
@@ -174,7 +177,8 @@ def handle_webhook():
         if webhook_data is None:
             if DEBUG_MODE:
                 print("⚠️ WARNING: No JSON data received!")
-            return jsonify({'status': 'error', 'message': 'No JSON data'}), 200
+            # Still return 200 to prevent retries
+            return jsonify({'status': 'ok', 'message': 'No data'}), 200
 
         if DEBUG_MODE:
             print("\n" + "="*60)
@@ -182,20 +186,29 @@ def handle_webhook():
             print("="*60)
             print(json.dumps(webhook_data, indent=2))
             print("="*60 + "\n")
-            print("🔄 Processing incoming message...")
         
-        process_incoming_message(webhook_data)
+        # Process the webhook (returns True if processed, False if ignored)
+        # This function filters out status updates, duplicates, and non-message events
+        was_processed = process_incoming_message(webhook_data)
         
         if DEBUG_MODE:
-            print("✅ Processing complete")
+            if was_processed:
+                print("✅ Message processed successfully")
+            else:
+                print("ℹ️ Webhook event ignored (status update, duplicate, or non-message)")
         
+        # CRITICAL: Always return 200 OK quickly, even for ignored events
+        # This prevents WhatsApp from retrying the webhook
         return jsonify({'status': 'ok'}), 200
         
     except Exception as e:
+        # Even on errors, return 200 to prevent retries
+        # Log the error but don't let it crash or cause retries
         if DEBUG_MODE:
             print(f"\n❌ WEBHOOK ERROR: {e}")
             traceback.print_exc()
-        return jsonify({'status': 'error', 'message': str(e)}), 200
+        # Return 200 OK to prevent WhatsApp retries
+        return jsonify({'status': 'ok', 'error': 'Internal error logged'}), 200
 
 
 if __name__ == "__main__":

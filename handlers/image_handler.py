@@ -91,21 +91,38 @@ def download_whatsapp_image(media_id: str) -> tuple:
         traceback.print_exc()
         return None, None, None
 
-def handle_receipt_image(phone_number: str, message: dict):
+def handle_receipt_image(phone_number: str, message: dict, message_id: str = None):
     """
     Handles when user sends a receipt image
     
     Process:
     1. Extract image ID from message
-    2. Download image from WhatsApp
-    3. Store receipt record in database
-    4. Send acknowledgment to user
+    2. Check for duplicates (both message_id and media_id)
+    3. Download image from WhatsApp
+    4. Store receipt record in database
+    5. Send acknowledgment to user
     
     Args:
         phone_number: User's WhatsApp phone number
         message: The message object from webhook
+        message_id: WhatsApp message ID for idempotency checking (optional but recommended)
     """
     try:
+        # Extract message_id from message if not provided (fallback)
+        if not message_id:
+            message_id = message.get('id')
+        
+        # CRITICAL: Double-check message_id idempotency at image handler level
+        # This provides additional protection against race conditions and ensures
+        # we catch duplicates even if webhook handler check somehow failed
+        if message_id:
+            # Import here to avoid circular dependency
+            from handlers.webhook_handler import _is_message_processed
+            if _is_message_processed(message_id):
+                print(f"🔄 Image handler: Duplicate message_id detected ({message_id[:20]}...) - already processed, ignoring")
+                print(f"   This duplicate was caught at image handler level (safety check)")
+                return
+        
         # Extract image data from webhook payload
         image_data = message.get('image', {})
         media_id = image_data.get('id')
@@ -120,17 +137,20 @@ def handle_receipt_image(phone_number: str, message: dict):
             return
         
         print(f"📷 Processing receipt image:")
+        print(f"   Message ID: {message_id[:20] if message_id else 'N/A'}...")
         print(f"   Media ID: {media_id}")
         print(f"   MIME Type: {mime_type}")
         
         # Check for duplicate receipt FIRST (prevent processing same image multiple times)
         # This prevents multiple acknowledgment messages for the same receipt
+        # Uses media_id as backup check (in case message_id check somehow failed)
         from utils.receipt_storage import check_receipt_exists
         image_url_ref = f"whatsapp_media_id:{media_id}"
         existing_receipt_id = check_receipt_exists(image_url_ref, phone_number)
         
         if existing_receipt_id:
-            print(f"⚠️ Receipt already processed: ID {existing_receipt_id}")
+            print(f"🔄 Duplicate receipt detected (media_id: {media_id[:20]}...)")
+            print(f"   Existing receipt ID: {existing_receipt_id}")
             # Only send message if this is a new webhook call (not already processing)
             # Check if receipt is still pending (being processed)
             from config.supabase_config import get_supabase_client
@@ -144,6 +164,8 @@ def handle_receipt_image(phone_number: str, message: dict):
                 # Still processing, don't send duplicate message
                 print("ℹ️ Receipt is still being processed, skipping duplicate message")
             else:
+                # Already completed processing - send acknowledgment
+                print("✅ Receipt already completed processing earlier")
                 send_whatsapp_message(
                     phone_number,
                     "✅ This receipt was already processed earlier. If you need to resubmit, please send a new image."
