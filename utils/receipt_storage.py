@@ -4,8 +4,98 @@ Handles saving receipt data to Supabase database
 """
 
 from config.supabase_config import get_supabase_client
-from datetime import date, datetime
+from utils.grocery_prediction_utils import receipt_items_from_receipts, aggregate_purchase_patterns, format_data_for_llm
+from datetime import date, datetime, timedelta
 import os
+
+def check_receipt_exists(image_url: str, user_phone: str) -> int | None:
+    """
+    Checks if a receipt with the same image_url already exists
+    
+    Args:
+        image_url: The image URL or media ID reference
+        user_phone: User's phone number
+        
+    Returns:
+        int: Existing receipt ID if found, None otherwise
+    """
+    try:
+        supabase = get_supabase_client()
+        
+        result = supabase.table('receipts')\
+            .select('id')\
+            .eq('user_phone', user_phone)\
+            .eq('image_url', image_url)\
+            .limit(1)\
+            .execute()
+        
+        if result.data and len(result.data) > 0:
+            existing_id = result.data[0]['id']
+            print(f"⚠️ Receipt with this image already exists: ID {existing_id}")
+            return existing_id
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Error checking receipt existence: {e}")
+        return None
+
+
+def get_recent_pending_receipts_count(user_phone: str, within_seconds: int = 15) -> tuple[int, int]:
+    """
+    Gets count of pending receipts created recently (for batch detection)
+    
+    Args:
+        user_phone: User's phone number
+        within_seconds: How many seconds back to check (default: 15)
+        
+    Returns:
+        tuple: (total_count, receipt_position) - total pending receipts and position of most recent
+    """
+    try:
+        supabase = get_supabase_client()
+        now = datetime.now()
+        threshold = now - timedelta(seconds=within_seconds)
+        
+        # Get all pending receipts created in the last N seconds, ordered by creation time
+        result = supabase.table('receipts')\
+            .select('id, created_at')\
+            .eq('user_phone', user_phone)\
+            .eq('extraction_status', 'pending')\
+            .gte('created_at', threshold.isoformat())\
+            .order('created_at', desc=False)\
+            .execute()
+        
+        receipts = result.data if result.data else []
+        total_count = len(receipts)
+        
+        # Find position of most recent receipt (if it exists in the list)
+        receipt_position = None
+        if receipts:
+            # Get the most recent receipt ID to find its position
+            most_recent = supabase.table('receipts')\
+                .select('id, created_at')\
+                .eq('user_phone', user_phone)\
+                .eq('extraction_status', 'pending')\
+                .gte('created_at', threshold.isoformat())\
+                .order('created_at', desc=True)\
+                .limit(1)\
+                .execute()
+            
+            if most_recent.data:
+                most_recent_id = most_recent.data[0]['id']
+                # Find position in ordered list
+                for idx, receipt in enumerate(receipts, start=1):
+                    if receipt['id'] == most_recent_id:
+                        receipt_position = idx
+                        break
+        
+        return total_count, receipt_position or total_count
+        
+    except Exception as e:
+        print(f"❌ Error getting recent pending receipts count: {e}")
+        return 0, 0
+
 
 def create_receipt_record(
     user_phone: str,
@@ -219,5 +309,65 @@ def update_receipt_with_structured_data(receipt_id: int, structured_data: dict):
         import traceback
         traceback.print_exc()
 
+def save_prediction(user_phone: str, prediction_data: dict, llm_prompt: str = None) -> int:
+    """
+    Saves a grocery prediction to the predictions table
+    
+    Args:
+        user_phone: User's WhatsApp phone number
+        prediction_data: Dictionary from generate_grocery_prediction()
+                        Must contain: predicted_date_range_start, predicted_date_range_end, 
+                                     predicted_items, reasoning (optional), llm_used
+        llm_prompt: The prompt sent to LLM (optional, for debugging)
+        
+    Returns:
+        int: Prediction ID if successful, None if failed
+    """
 
-            
+    try:
+        supabase = get_supabase_client()
+
+         # Calculate expiration time (5 hours from now, or end of day, whichever is later)
+        now = datetime.now()
+        expires_at = now + timedelta(hours=5)
+
+        # Prepare prediction data
+        prediction_record = {
+            'user_phone': user_phone,
+            'prediction_date': date.today().isoformat(),
+            'predicted_date_range_start': prediction_data.get('predicted_date_range_start'),
+            'predicted_date_range_end': prediction_data.get('predicted_date_range_end'),
+            'predicted_items': prediction_data.get('predicted_items', []),  # JSONB array
+            'reasoning': prediction_data.get('reasoning'),
+            'llm_used': prediction_data.get('llm_used', 'unknown'),
+            'llm_prompt': llm_prompt,
+            'llm_response': prediction_data,  # Store full response as JSONB
+            'status': 'pending_feedback',
+            'expires_at': expires_at.isoformat()
+        }
+
+        # Insert into database
+        result = supabase.table('predictions').insert(prediction_record).execute()
+
+        if result.data and len(result.data) > 0:
+            prediction_id = result.data[0]['id']
+            print(f"💾 Prediction saved: ID {prediction_id}")
+            return prediction_id
+        
+        else:
+             print("❌ Failed to save prediction - no data returned")
+             return None
+
+    except Exception as e:
+        print(f"❌ Error saving prediction: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+def get_receipt_items_for_receipts(receipt_ids: list):
+    """
+    Gets receipt items for a list of receipt IDs
+    (This is a wrapper for the function in grocery_prediction_utils)
+    """
+    from utils.grocery_prediction_utils import receipt_items_from_receipts
+    return receipt_items_from_receipts(receipt_ids)

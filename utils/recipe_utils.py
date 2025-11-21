@@ -45,7 +45,8 @@ def seed_initial_recipes():
         'Khaman chatani',
         'dal bati',
         'dal dhokari',
-        'Dudhina Muthiya'
+        'Dudhina Muthiya',
+        'Puff'
         
 
         

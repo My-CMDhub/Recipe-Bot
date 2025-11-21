@@ -9,6 +9,8 @@ import pytz
 import os
 from dotenv import load_dotenv
 from handlers.whatsapp_hanlder import send_recipe_message
+from utils.session_manager import check_and_send_reminders
+from apscheduler.triggers.interval import IntervalTrigger
 from utils.recipe_utils import get_random_recipe_not_sent_today, record_recipe_sent, get_all_recipe_names, reset_daily_history
 from datetime import datetime
 
@@ -145,6 +147,15 @@ def setup_scheduler():
         trigger=CronTrigger(hour=0, minute=0, timezone=AUSTRALIA_TZ),
         id='daily_reset',
         name='Reset daily recipe history',
+        replace_existing=True
+    )
+    
+    # Schedule feedback reminder checks every 30 minutes
+    scheduler.add_job(
+        func=check_and_send_reminders,
+        trigger=IntervalTrigger(minutes=30),
+        id='check_feedback_reminders',
+        name='Check and send feedback reminders',
         replace_existing=True
     )
     

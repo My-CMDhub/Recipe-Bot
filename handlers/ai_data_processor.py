@@ -4,14 +4,26 @@ import os
 import requests
 from dotenv import load_dotenv
 import json
+from utils.prompt_tracking import save_prompt_metric, is_context_limit_error
+
+
 
 load_dotenv()
 
-def call_mistral_api(prompt: str) -> str | None:
+def call_mistral_api(prompt: str, prediction_id: int = None, user_phone: str = None) -> str | None:
 
     MISTRAL_API_KEY = os.getenv('MISTRAL_API_KEY')
     if not MISTRAL_API_KEY:
         raise ValueError("MISTRAL_API_KEY not set in environment")
+    
+    # Track prompt size before sending
+    save_prompt_metric(
+        prompt=prompt,
+        llm_used='mistral',
+        prediction_id=prediction_id,
+        user_phone=user_phone,
+        request_successful=True  # Will update if error occurs
+    )
         
     try:
         url = f"https://api.mistral.ai/v1/chat/completions"
@@ -33,15 +45,50 @@ def call_mistral_api(prompt: str) -> str | None:
             content = response_data['choices'][0]['message']['content']
             return content
         else:
-            raise Exception(f"Mistral API error: {response.status_code} - {response.text}")
+            error_msg = f"Mistral API error: {response.status_code} - {response.text}"
+            # Check if context limit error
+            is_context_error = is_context_limit_error(response.text, response.status_code)
+            if is_context_error:
+                save_prompt_metric(
+                    prompt=prompt,
+                    llm_used='mistral',
+                    prediction_id=prediction_id,
+                    user_phone=user_phone,
+                    context_limit_hit=True,
+                    error_message=error_msg,
+                    error_code=str(response.status_code),
+                    request_successful=False
+                )
+            raise Exception(error_msg)
     except Exception as e:
+        error_msg = str(e)
+        is_context_error = is_context_limit_error(error_msg)
+        if is_context_error:
+            save_prompt_metric(
+                prompt=prompt,
+                llm_used='mistral',
+                prediction_id=prediction_id,
+                user_phone=user_phone,
+                context_limit_hit=True,
+                error_message=error_msg,
+                request_successful=False
+            )
         print(f"❌ Error calling Mistral API: {e}")
         return None
 
-def call_gemini_api(prompt: str) -> str | None:
+def call_gemini_api(prompt: str, prediction_id: int = None, user_phone: str = None) -> str | None:
     GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY not set in environment")
+
+    # Track prompt size before sending
+    save_prompt_metric(
+        prompt=prompt,
+        llm_used='gemini',
+        prediction_id=prediction_id,
+        user_phone=user_phone,
+        request_successful=True  # Will update if error occurs
+    )
 
     try:
         url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
@@ -68,11 +115,174 @@ def call_gemini_api(prompt: str) -> str | None:
             return content
 
         else:
-            raise Exception(f"Gemini API error: {response.status_code} - {response.text}")
+            error_msg = f"Gemini API error: {response.status_code} - {response.text}"
+            # Check if context limit error
+            is_context_error = is_context_limit_error(response.text, response.status_code)
+            if is_context_error:
+                save_prompt_metric(
+                    prompt=prompt,
+                    llm_used='gemini',
+                    prediction_id=prediction_id,
+                    user_phone=user_phone,
+                    context_limit_hit=True,
+                    error_message=error_msg,
+                    error_code=str(response.status_code),
+                    request_successful=False
+                )
+            raise Exception(error_msg)
     except Exception as e:
+        error_msg = str(e)
+        is_context_error = is_context_limit_error(error_msg)
+        if is_context_error:
+            save_prompt_metric(
+                prompt=prompt,
+                llm_used='gemini',
+                prediction_id=prediction_id,
+                user_phone=user_phone,
+                context_limit_hit=True,
+                error_message=error_msg,
+                request_successful=False
+            )
         print(f"❌ Error calling Gemini API: {e}")
         return None
 
+def call_deepseek_api(prompt: str, prediction_id: int = None, user_phone: str = None) -> str | None:
+
+    DEEPSEEK_API_KEY = os.getenv('DEEPSEEK_API_KEY')
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("DEEPSEEK_API_KEY not set in environment")
+
+    # Track prompt size before sending
+    from utils.prompt_tracking import save_prompt_metric, is_context_limit_error
+    save_prompt_metric(
+        prompt=prompt,
+        llm_used='deepseek',
+        prediction_id=prediction_id,
+        user_phone=user_phone,
+        request_successful=True  # Will update if error occurs
+    )
+
+    try:
+        url = "https://api.deepseek.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        data = {
+            'model': 'deepseek-reasoner',
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': prompt
+                }
+            ]
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
+            response_data = response.json()
+            content = response_data['choices'][0]['message']['content']
+            return content
+        else:
+            error_msg = f"DeepSeek API error: {response.status_code} - {response.text}"
+            # Check if context limit error
+            is_context_error = is_context_limit_error(response.text, response.status_code)
+            if is_context_error:
+                save_prompt_metric(
+                    prompt=prompt,
+                    llm_used='deepseek',
+                    prediction_id=prediction_id,
+                    user_phone=user_phone,
+                    context_limit_hit=True,
+                    error_message=error_msg,
+                    error_code=str(response.status_code),
+                    request_successful=False
+                )
+            raise Exception(error_msg)
+    except Exception as e:
+        error_msg = str(e)
+        is_context_error = is_context_limit_error(error_msg)
+        if is_context_error:
+            save_prompt_metric(
+                prompt=prompt,
+                llm_used='deepseek',
+                prediction_id=prediction_id,
+                user_phone=user_phone,
+                context_limit_hit=True,
+                error_message=error_msg,
+                request_successful=False
+            )
+        print(f"❌ Error calling DeepSeek API: {e}")
+        return None
+
+def call_openai_api(prompt: str, prediction_id: int = None, user_phone: str = None) -> str | None:
+    OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+    if not OPENAI_API_KEY:
+        raise ValueError("OPENAI_API_KEY not set in environment")
+
+    # Track prompt size before sending
+    from utils.prompt_tracking import save_prompt_metric, is_context_limit_error
+    save_prompt_metric(
+        prompt=prompt,
+        llm_used='openai',
+        prediction_id=prediction_id,
+        user_phone=user_phone,
+        request_successful=True  # Will update if error occurs
+    )
+
+    try:
+        url = "https://api.openai.com/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {OPENAI_API_KEY}",
+            "Content-Type": "application/json"
+        }
+
+        data = {
+            "model": "gpt-4o-mini",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        }
+
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code == 200:
+            response_data = response.json()
+            content = response_data['choices'][0]['message']['content']
+            return content
+        else:
+            error_msg = f"OpenAI API error: {response.status_code} - {response.text}"
+            # Check if context limit error
+            is_context_error = is_context_limit_error(response.text, response.status_code)
+            if is_context_error:
+                save_prompt_metric(
+                    prompt=prompt,
+                    llm_used='openai',
+                    prediction_id=prediction_id,
+                    user_phone=user_phone,
+                    context_limit_hit=True,
+                    error_message=error_msg,
+                    error_code=str(response.status_code),
+                    request_successful=False
+                )
+            raise Exception(error_msg)
+    except Exception as e:
+        error_msg = str(e)
+        is_context_error = is_context_limit_error(error_msg)
+        if is_context_error:
+            save_prompt_metric(
+                prompt=prompt,
+                llm_used='openai',
+                prediction_id=prediction_id,
+                user_phone=user_phone,
+                context_limit_hit=True,
+                error_message=error_msg,
+                request_successful=False
+            )
+        print(f"❌ Error calling OpenAI API: {e}")
+        return None
 
 def parse_ai_response(response_text: str) -> dict | None:
     """
