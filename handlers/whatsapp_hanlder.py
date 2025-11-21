@@ -56,15 +56,22 @@ def send_whatsapp_message(phone_number: str, message: str) -> dict:
     }
     
     # Make the API request
-    response = requests.post(url, json=payload, headers=headers)
-    
-    # Check if request was successful
-    if response.status_code == 200:
-        return response.json()
-    else:
-        # If failed, raise error with details
-        error_msg = f"WhatsApp API error: {response.status_code} - {response.text}"
-        raise Exception(error_msg)
+    try:
+        response = requests.post(url, json=payload, headers=headers, timeout=10)
+        
+        # Check if request was successful
+        if response.status_code == 200:
+            result = response.json()
+            print(f"📤 WhatsApp message sent to {phone_number}: {message[:50]}...")
+            return result
+        else:
+            # If failed, raise error with details
+            error_msg = f"WhatsApp API error: {response.status_code} - {response.text}"
+            print(f"❌ Failed to send WhatsApp message: {error_msg}")
+            raise Exception(error_msg)
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network error sending WhatsApp message: {e}")
+        raise
 
 def send_recipe_message(phone_number: str, recipe_name: str) -> dict:
     """
