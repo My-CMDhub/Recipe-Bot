@@ -112,17 +112,6 @@ def handle_receipt_image(phone_number: str, message: dict, message_id: str = Non
         if not message_id:
             message_id = message.get('id')
         
-        # CRITICAL: Double-check message_id idempotency at image handler level
-        # This provides additional protection against race conditions and ensures
-        # we catch duplicates even if webhook handler check somehow failed
-        if message_id:
-            # Import here to avoid circular dependency
-            from handlers.webhook_handler import _is_message_processed
-            if _is_message_processed(message_id):
-                print(f"🔄 Image handler: Duplicate message_id detected ({message_id[:20]}...) - already processed, ignoring")
-                print(f"   This duplicate was caught at image handler level (safety check)")
-                return
-        
         # Extract image data from webhook payload
         image_data = message.get('image', {})
         media_id = image_data.get('id')
@@ -141,9 +130,9 @@ def handle_receipt_image(phone_number: str, message: dict, message_id: str = Non
         print(f"   Media ID: {media_id}")
         print(f"   MIME Type: {mime_type}")
         
-        # Check for duplicate receipt FIRST (prevent processing same image multiple times)
-        # This prevents multiple acknowledgment messages for the same receipt
-        # Uses media_id as backup check (in case message_id check somehow failed)
+        # CRITICAL: Check for duplicate receipt FIRST using media_id (database check)
+        # This is the PRIMARY duplicate check for images - checks if same image was sent before
+        # This prevents processing the same image multiple times even if message_id differs
         from utils.receipt_storage import check_receipt_exists
         image_url_ref = f"whatsapp_media_id:{media_id}"
         existing_receipt_id = check_receipt_exists(image_url_ref, phone_number)
@@ -170,7 +159,18 @@ def handle_receipt_image(phone_number: str, message: dict, message_id: str = Non
                     phone_number,
                     "✅ This receipt was already processed earlier. If you need to resubmit, please send a new image."
                 )
+            # Mark message_id as processed to prevent webhook retries
+            if message_id:
+                from handlers.webhook_handler import _mark_message_processed
+                _mark_message_processed(message_id)
             return
+        
+        # NEW IMAGE: Not a duplicate, proceed with processing
+        # Mark message_id as processed NOW to prevent webhook retries while processing
+        if message_id:
+            from handlers.webhook_handler import _mark_message_processed
+            _mark_message_processed(message_id)
+            print(f"✅ Marked message_id as processed to prevent retries")
         
         # Check if this receipt is feedback for an active prediction (check early)
         # Extend session if found to prevent expiration during OCR processing

@@ -41,9 +41,26 @@ def log_request_info():
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    """Health check endpoint - also shows scheduler status"""
+    scheduler_status = {
+        'running': scheduler.running if scheduler else False,
+        'jobs_count': len(scheduler.get_jobs()) if scheduler and scheduler.running else 0
+    }
+    
+    jobs_info = []
+    if scheduler and scheduler.running:
+        for job in scheduler.get_jobs():
+            jobs_info.append({
+                'id': job.id,
+                'name': job.name,
+                'next_run': job.next_run_time.strftime('%Y-%m-%d %H:%M:%S %Z') if job.next_run_time else None
+            })
+    
     return jsonify({
         'status': 'ok',
-        'message': 'WhatsApp Recipe Bot is running!'
+        'message': 'WhatsApp Recipe Bot is running!',
+        'scheduler': scheduler_status,
+        'jobs': jobs_info
     }), 200
 
 @app.route('/test-webhook', methods=['GET', 'POST'])
@@ -222,6 +239,15 @@ if __name__ == "__main__":
         print(f"🌏 Timezone: Australia/Sydney")
         print(f"🔧 Debug mode: {debug}")
         print(f"🌐 Port: {port}")
+        
+        # Verify scheduler is still running before starting Flask
+        if scheduler and not scheduler.running:
+            print("⚠️ WARNING: Scheduler is not running! Attempting to restart...")
+            try:
+                scheduler.start()
+                print("✅ Scheduler restarted successfully")
+            except Exception as e:
+                print(f"❌ Failed to restart scheduler: {e}")
         
         app.run(debug=debug, host='0.0.0.0', port=port)
     except KeyboardInterrupt:

@@ -86,7 +86,7 @@ def send_recipe_message(phone_number: str, recipe_name: str) -> dict:
     """
     # Format the message nicely
     message = f"🍽️ *Daily Recipe Suggestion*\n\n"
-    message += f"Tonight's dinner idea: *{recipe_name}*\n\n"
+    message += f"Tomorrow's dinner idea: *{recipe_name}*\n\n"
     message += f"Reply 'not today' if you'd like a different suggestion!"
     
     return send_whatsapp_message(phone_number, message)

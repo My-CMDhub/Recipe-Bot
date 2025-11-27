@@ -108,9 +108,6 @@ def process_incoming_message(webhook_data: dict) -> bool:
             print(f"🔄 Duplicate message detected (ID: {message_id[:20]}...) - already processed, ignoring")
             return False
         
-        # Mark as processed BEFORE processing (prevents race conditions)
-        _mark_message_processed(message_id)
-        
         # Extract phone number and message text
         sender_phone = message.get('from')  # Phone number of sender
         message_type = message.get('type')   # Usually 'text'
@@ -123,12 +120,16 @@ def process_incoming_message(webhook_data: dict) -> bool:
         if message_type != 'text':
             if message_type == 'image':
                 print(f"📷 Image message received from {sender_phone}")
-                # Pass message_id to image handler for additional duplicate prevention
+                # For images: Don't mark as processed yet - let image handler do it
+                # after checking media_id duplicates. This prevents false positives.
                 handle_receipt_image(sender_phone, message, message_id)
                 return True
             else:    
                 print(f"⚠️ Unsupported message type: {message_type} - ignoring")
                 return False
+        
+        # For text messages: Mark as processed immediately (they're fast and synchronous)
+        _mark_message_processed(message_id)
         
         # Get the actual message text
         message_text = message.get('text', {}).get('body', '').lower().strip()
