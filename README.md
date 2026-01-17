@@ -1,4 +1,4 @@
-# 🍽️ WhatsApp Recipe Bot
+# 🍽️ WhatsApp Grocery Agent
 
 > **Automated daily dinner recipe suggestions via WhatsApp**  
 > Built with Flask, WhatsApp Cloud API, and Supabase. Features AI-powered grocery predictions and receipt processing.
